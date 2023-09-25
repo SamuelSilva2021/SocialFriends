@@ -1,3 +1,4 @@
+using System.Security.Claims;
 using API.DTOs;
 using API.Services;
 using Domain;
@@ -8,7 +9,6 @@ using Microsoft.EntityFrameworkCore;
 
 namespace API.Controllers
 {
-    [AllowAnonymous]
     [ApiController]
     [Route("api/[controller]")]
     public class AccountController : ControllerBase 
@@ -22,6 +22,7 @@ namespace API.Controllers
             _tokenService = tokenService;
 
         }
+        [AllowAnonymous]
         [HttpPost("login")]
         public async Task<ActionResult<UserDto>> Login(LoginDto loginDto)
         {
@@ -43,23 +44,26 @@ namespace API.Controllers
             }
             return Unauthorized();
         }
+        [AllowAnonymous]
         [HttpPost("register")]
         public async Task<ActionResult<UserDto>> Register(RegisterDto registerDto)
         {
-            if(await _userManager.Users.AnyAsync(x => x.UserName == registerDto.UserName))
+            if(await _userManager.Users.AnyAsync(x => x.Email == registerDto.Email))
             {
-                return BadRequest("Nome de usuário já existe");
+                ModelState.AddModelError("email", "Email já utilizado!");
+                return ValidationProblem();
             }
-            if (await _userManager.Users.AnyAsync(x => x.Email == registerDto.Email))
+            if (await _userManager.Users.AnyAsync(x => x.UserName == registerDto.Username))
             {
-                return BadRequest("Email já cadastrado");
+                ModelState.AddModelError("userName", "Nome de usuário já utilizado!");
+                return ValidationProblem();
             }
 
             var user = new AppUser
             {
                 DisplayName = registerDto.DisplayName,  
                 Email = registerDto.Email,
-                UserName = registerDto.UserName,
+                UserName = registerDto.Username,
             };
 
             var result = await _userManager.CreateAsync(user, registerDto.Password);
@@ -76,6 +80,23 @@ namespace API.Controllers
             }
 
             return BadRequest(result.Errors);
-        }   
+        }
+        [Authorize]
+        [HttpGet]
+        public async Task<ActionResult<UserDto>> GetCurrentUser()
+        {
+            var user = await _userManager.FindByEmailAsync(User.FindFirstValue(ClaimTypes.Email));
+            return CreateUserObject(user);
+        }
+        private UserDto CreateUserObject(AppUser user)
+        {
+            return new UserDto
+            {
+                DisplayName = user.DisplayName,
+                Image = null,
+                Token = _tokenService.CreateToken(user),
+                UserName = user.UserName
+            };
+        }
     }
 }
